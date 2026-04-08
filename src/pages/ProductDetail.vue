@@ -201,7 +201,7 @@ const buyNow = async () => {
     })
     if (res?.code === 200) {
       // 将预下单数据存储到 sessionStorage，供订单确认页使用
-      sessionStorage.setItem('preOrderData', JSON.stringify(res.data))
+      sessionStorage.setItem('preOrderData', JSON.stringify({ ...res.data, source: 1 }))
       router.push('/order-confirm')
     } else {
       ElMessage.error(res?.msg || '预下单失败')

@@ -88,7 +88,8 @@ const goBack = () => {
       orderSn: route.params.orderSn,
       payAmount: totalPayAmount.value.toFixed(2),
       payDeadline: subOrders.value[0]?.paymentTime ? '' : Date.now() + 30 * 60 * 1000,
-      payType: subOrders.value[0]?.paymentType || 1
+      paymentType: subOrders.value[0]?.paymentType || 1,
+      orderType: 'parent'
     }
   })
 }

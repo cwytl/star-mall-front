@@ -3,16 +3,18 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument } from '@element-plus/icons-vue'
-import { getOrderStatus, cancelOrder } from '@/api/order'
+import { getParentOrderStatus, getSubOrderStatus, cancelOrder } from '@/api/order'
 
 const router = useRouter()
 const route = useRoute()
 
 // 订单信息
 const orderSn = ref('')
+const subOrderSn = ref('')
+const orderType = ref('parent')
 const payAmount = ref('0.00')
 const payDeadline = ref(null)
-const payType = ref(1)
+const paymentType = ref(1)
 
 // 倒计时
 const remainingTime = ref(0)
@@ -25,13 +27,13 @@ let countdownTimer = null
 
 // 计算支付方式名称
 const payTypeName = computed(() => {
-  return payType.value === 1 ? '支付宝' : payType.value === 2 ? '微信支付' : '在线支付'
+  return paymentType.value === 1 ? '支付宝' : paymentType.value === 2 ? '微信支付' : '在线支付'
 })
 
 // 生成二维码URL
 const qrCodeUrl = computed(() => {
   if (!orderSn.value) return ''
-  const payUrl = `http://172.20.10.3:8080/api/order/pay?parentOrderSn=${orderSn.value}&paymentType=${payType.value}`
+  const payUrl = `http://172.20.10.3:8080/api/order/pay?orderSn=${orderSn.value}&paymentType=${paymentType.value}`
   return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(payUrl)}`
 })
 
@@ -65,10 +67,18 @@ const updateCountdown = () => {
 
 // 轮询订单状态
 const pollOrderStatus = async () => {
-  if (!orderSn.value || isTimeout.value) return
+  if (isTimeout.value) return
 
   try {
-    const res = await getOrderStatus(orderSn.value)
+    // 根据订单类型选择不同的轮询 API
+    let res
+    if (orderType.value === 'sub') {
+      // 子订单：轮询子订单状态
+      res = await getSubOrderStatus(subOrderSn.value)
+    } else {
+      // 主订单：轮询主订单状态
+      res = await getParentOrderStatus(orderSn.value)
+    }
     const status = res?.data
 
     if (status === 1) {
@@ -169,7 +179,7 @@ const handleCancelOrder = () => {
 // 初始化
 onMounted(() => {
   // 从路由参数获取订单信息
-  const { orderSn: sn, payAmount: amount, payDeadline: deadline, payType: type } = route.query
+  const { orderSn: sn, subOrderSn: subSn, orderType: type, payAmount: amount, payDeadline: deadline, paymentType: payType } = route.query
 
   if (!sn) {
     ElMessage.warning('订单信息不存在')
@@ -178,9 +188,11 @@ onMounted(() => {
   }
 
   orderSn.value = sn
+  subOrderSn.value = subSn || ''
+  orderType.value = type || 'parent'
   payAmount.value = amount || '0.00'
   payDeadline.value = deadline ? Number(deadline) : null
-  payType.value = type ? Number(type) : 1
+  paymentType.value = payType ? Number(payType) : 1
 
   // 启动倒计时
   if (payDeadline.value) {
@@ -202,7 +214,7 @@ onUnmounted(() => {
   <div class="cashier-page">
     <div class="cashier-container">
       <!-- 顶部标题 -->
-      <div class="cashier-header" :class="{ 'alipay': payType === 1, 'wechat': payType === 2 }">
+      <div class="cashier-header" :class="{ 'alipay': paymentType === 1, 'wechat': paymentType === 2 }">
         <p class="pay-type-name">{{ payTypeName }}</p>
       </div>
 

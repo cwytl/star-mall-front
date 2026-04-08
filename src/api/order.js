@@ -147,12 +147,21 @@ export function submitOrder(data) {
 }
 
 /**
- * 查询订单状态（供前端轮询）
+ * 查询主订单状态（供前端轮询）
  * @param {string} parentOrderSn 主订单编号
  * @returns {Promise<number>} 返回订单状态
  */
-export function getOrderStatus(parentOrderSn) {
-    return request.get(`/order/getStatus/${parentOrderSn}`)
+export function getParentOrderStatus(parentOrderSn) {
+    return request.get(`/order/status/parent/${parentOrderSn}`)
+}
+
+/**
+ * 查询子订单状态（供前端轮询）
+ * @param {string} subOrderSn 子订单编号
+ * @returns {Promise<number>} 返回订单状态
+ */
+export function getSubOrderStatus(subOrderSn) {
+    return request.get(`/order/status/sub/${subOrderSn}`)
 }
 
 /**
@@ -182,14 +191,35 @@ export function confirmReceive(orderSn) {
     return request.post(`/order/confirm/${orderSn}`)
 }
 
+/**
+ * 继续支付（子订单）
+ * @param {string} subOrderSn 子订单编号
+ * @returns {Promise<OrderCreateVO>} 返回订单创建信息
+ *
+ * OrderCreateVO 数据结构：
+ * - orderSn: 订单唯一标识（业务号）
+ * - payAmount: 应付金额
+ * - payDeadline: 支付截止时间（毫秒时间戳）
+ * - paymentType: 支付类型
+ * - priceChanged: 金额是否发生变动
+ * - changeReason: 变动原因描述
+ * - allowSplitPayment: 是否可以分开支付
+ * - subOrderSns: 该主订单下包含的子订单编号列表
+ */
+export function resumePay(subOrderSn) {
+    return request.post(`/order/submit/resume/${subOrderSn}`)
+}
+
 export default {
     getSubOrderList,
     getParentOrderDetail,
     getSubOrderDetail,
     checkout,
     submitOrder,
-    getOrderStatus,
+    getParentOrderStatus,
+    getSubOrderStatus,
     cancelOrder,
     deleteOrder,
-    confirmReceive
+    confirmReceive,
+    resumePay
 }

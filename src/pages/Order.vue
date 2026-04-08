@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
-import { getSubOrderList, cancelOrder, deleteOrder, confirmReceive } from '@/api/order'
+import { getSubOrderList, cancelOrder, deleteOrder, confirmReceive, resumePay } from '@/api/order'
 
 const router = useRouter()
 const activeTab = ref('all')
@@ -13,6 +13,11 @@ const searchKeyword = ref('')
 const countdownMap = ref({})
 const expiredOrderIds = ref(new Set()) // 存储已超时订单ID
 let countdownTimer = null
+
+// 分开支付弹窗相关
+const splitPaymentDialogVisible = ref(false)
+const splitPaymentData = ref(null) // resumePay 返回的数据
+const relatedOrders = ref([]) // 关联的子订单信息
 
 // 订单状态映射
 // 0: 待付款, 1: 待发货, 2: 已发货(待收货), 3: 已完成, 4: 已关闭
@@ -191,16 +196,76 @@ const handleTabChange = () => {
   fetchOrders()
 }
 
-const handlePay = (order) => {
-  router.push({
-    path: '/cashier',
-    query: {
-      orderSn: order.subOrderSn,
-      payAmount: order.payAmount,
-      payDeadline: order.paymentTime ? '' : Date.now() + 30 * 60 * 1000,
-      payType: order.paymentType || 1
+const handlePay = async (order) => {
+  try {
+    const res = await resumePay(order.subOrderSn)
+    if (res?.code === 200) {
+      const data = res.data
+      // 如果金额发生变动，提示用户
+      if (data.priceChanged) {
+        ElMessage.warning(data.changeReason || '订单金额已变动，请重新核对')
+      }
+
+      if (data.allowSplitPayment) {
+        // 可以分开支付，直接跳转收银台
+        router.push({
+          path: '/cashier',
+          query: {
+            orderSn: data.orderSn,
+            payAmount: data.payAmount,
+            payDeadline: data.payDeadline,
+            paymentType: data.paymentType,
+            subOrderSn: order.subOrderSn,
+            orderType: 'sub'
+          }
+        })
+      } else {
+        // 不能分开支付，显示弹窗提示
+        splitPaymentData.value = data
+        // 从当前订单列表中查找关联的子订单信息
+        const related = []
+        for (const subOrderSn of data.subOrderSns || []) {
+          const foundOrder = orders.value.find(o => o.subOrderSn === subOrderSn)
+          if (foundOrder) {
+            related.push(foundOrder)
+          } else {
+            // 如果在当前列表中找不到，添加一个占位信息
+            related.push({
+              subOrderSn,
+              items: [],
+              payAmount: 0,
+              status: 0,
+              statusDesc: '待付款'
+            })
+          }
+        }
+        relatedOrders.value = related
+        splitPaymentDialogVisible.value = true
+      }
+    } else {
+      ElMessage.error(res?.msg || '获取支付信息失败')
     }
-  })
+  } catch (err) {
+    console.error('继续支付失败:', err)
+    ElMessage.error('继续支付失败，请重试')
+  }
+}
+
+// 确认一起支付
+const confirmSplitPayment = () => {
+  splitPaymentDialogVisible.value = false
+  if (splitPaymentData.value) {
+    router.push({
+      path: '/cashier',
+      query: {
+        orderSn: splitPaymentData.value.orderSn,
+        payAmount: splitPaymentData.value.payAmount,
+        payDeadline: splitPaymentData.value.payDeadline,
+        paymentType: splitPaymentData.value.paymentType,
+        orderType: 'parent'
+      }
+    })
+  }
 }
 
 const handleConfirmReceipt = async (order) => {
@@ -389,6 +454,51 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- 分开支付提示弹窗 -->
+    <el-dialog
+      v-model="splitPaymentDialogVisible"
+      title="订单合并支付提示"
+      width="500px"
+      :close-on-click-modal="false"
+      lock-scroll
+    >
+      <div class="split-payment-dialog">
+        <p class="dialog-tip">以下订单需要一起支付，无法分开支付：</p>
+        <div class="related-orders">
+          <div v-for="relatedOrder in relatedOrders" :key="relatedOrder.subOrderSn" class="related-order-card">
+            <div class="related-order-header">
+              <span class="related-order-sn">订单号: {{ relatedOrder.subOrderSn }}</span>
+              <span class="related-order-status">{{ relatedOrder.statusDesc }}</span>
+            </div>
+            <div v-if="relatedOrder.items && relatedOrder.items.length > 0" class="related-order-items">
+              <div v-for="item in relatedOrder.items" :key="item.skuId" class="related-item">
+                <img :src="item.picUrl" class="related-item-img" />
+                <div class="related-item-info">
+                  <p class="related-item-name" v-html="item.spuName"></p>
+                  <p class="related-item-spec">{{ item.skuName }}</p>
+                </div>
+                <div class="related-item-price">
+                  <span>¥{{ item.price?.toFixed(2) }}</span>
+                  <span class="related-item-qty">x{{ item.quantity }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="related-order-empty">
+              <span>暂无商品信息</span>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-total">
+          <span>合计支付金额：</span>
+          <span class="dialog-total-amount">¥{{ splitPaymentData?.payAmount }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="splitPaymentDialogVisible = false">取消</el-button>
+        <el-button type="primary" color="#ff6a00" @click="confirmSplitPayment">确认支付</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -634,5 +744,128 @@ onUnmounted(() => {
     align-items: flex-end;
     gap: 12px;
   }
+}
+
+/* 分开支付弹窗样式 */
+.split-payment-dialog {
+  padding: 10px 0;
+}
+
+.dialog-tip {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.related-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.related-order-card {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid #e8e8e8;
+}
+
+.related-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.related-order-sn {
+  font-size: 13px;
+  color: #333;
+}
+
+.related-order-status {
+  font-size: 12px;
+  color: #ff6a00;
+  font-weight: 500;
+}
+
+.related-order-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.related-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.related-item-img {
+  width: 50px;
+  height: 50px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.related-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.related-item-name {
+  font-size: 13px;
+  color: #333;
+  margin: 0 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.related-item-name em {
+  font-style: normal;
+  color: #ff6a00;
+}
+
+.related-item-spec {
+  font-size: 12px;
+  color: #999;
+  margin: 0;
+}
+
+.related-item-price {
+  text-align: right;
+  font-size: 13px;
+  color: #333;
+}
+
+.related-item-qty {
+  color: #999;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.related-order-empty {
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+  padding: 10px 0;
+}
+
+.dialog-total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+
+.dialog-total-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ef4444;
 }
 </style>

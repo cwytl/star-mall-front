@@ -195,7 +195,7 @@ const submitOrderFn = async () => {
     })) || []
 
     const data = {
-      source: 1, // 1-立即购买
+      source: orderData.value?.source || 2,
       addressId: orderData.value.userAddressId,
       paymentType: selectedPayType.value,
       expectedPayAmount: orderData.value.payAmount,
@@ -220,7 +220,8 @@ const submitOrderFn = async () => {
           orderSn: res.data.orderSn,
           payAmount: res.data.payAmount,
           payDeadline: res.data.payDeadline,
-          payType: res.data.payType
+          paymentType: res.data.payType,
+          orderType: 'parent'
         }
       })
     } else {

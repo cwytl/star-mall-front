@@ -380,7 +380,7 @@ const checkout = async () => {
     const res = await checkoutApi(data)
     if (res?.code === 200) {
       // 存储预下单数据
-      sessionStorage.setItem('preOrderData', JSON.stringify(res.data))
+      sessionStorage.setItem('preOrderData', JSON.stringify({ ...res.data, source: 2 }))
       // 跳转到订单确认页
       router.push('/order-confirm')
     } else {
