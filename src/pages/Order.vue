@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, ArrowRight } from '@element-plus/icons-vue'
 import { getSubOrderList, cancelOrder, deleteOrder, confirmReceive, resumePay } from '@/api/order'
 
 const router = useRouter()
@@ -128,16 +128,10 @@ const fetchOrders = async () => {
       }
       params.status = statusValueMap[activeTab.value]
     }
-    // 搜索功能
+    // 搜索功能（一键通搜：订单号或商品名）
     const keyword = searchKeyword.value.trim()
     if (keyword) {
-      // 如果是纯数字，当作 subOrderId 搜索
-      if (/^\d+$/.test(keyword)) {
-        params.subOrderId = Number(keyword)
-      } else {
-        // 否则当作商品名称搜索
-        params.spuName = keyword
-      }
+      params.keyword = keyword
     }
     const res = await getSubOrderList(params)
     if (res.code === 200) {
@@ -367,7 +361,7 @@ onUnmounted(() => {
       <section class="search-section">
         <el-input
           v-model="searchKeyword"
-          placeholder="输入商品名称"
+          placeholder="输入订单号或商品名称"
           class="search-input"
           clearable
           @clear="clearSearch"
@@ -401,7 +395,7 @@ onUnmounted(() => {
             <div class="header-left">
               <span class="order-time">{{ formatTime(order.createTime) }}</span>
               <span class="order-id">订单号: {{ order.subOrderSn }}</span>
-              <el-button type="primary" link size="small" @click="goToOrderDetail(order.subOrderSn)">订单详情</el-button>
+              <span class="detail-btn" @click="goToOrderDetail(order.subOrderSn)">订单详情 <el-icon><ArrowRight /></el-icon></span>
             </div>
             <div class="header-right">
               <span :class="['order-status', `status-${order.status}`]">{{ order.statusDesc }}</span>
@@ -436,7 +430,7 @@ onUnmounted(() => {
                 <el-button type="primary" color="#ff6a00" @click="handlePay(order)">立即付款</el-button>
               </template>
               <template v-if="order.status === 1">
-                <el-button plain>提示发货</el-button>
+                <el-button plain>提醒发货</el-button>
               </template>
               <template v-if="order.status === 2">
                 <el-button plain>查看物流</el-button>
@@ -534,6 +528,10 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
+.search-section .el-button {
+  color: #fff;
+}
+
 .search-input {
   flex: 1;
   max-width: 400px;
@@ -599,8 +597,14 @@ onUnmounted(() => {
   color: #6b7280;
 }
 
+
+.order-time{
+  font-size: 14px;
+}
+
 .order-id {
   color: #374151;
+  font-size: 14px;
 }
 
 .order-status {
@@ -617,6 +621,22 @@ onUnmounted(() => {
 .status-2 { color: #3b82f6; } /* 已发货 */
 .status-3 { color: #10b981; } /* 已完成 */
 .status-4 { color: #9ca3af; } /* 已关闭 */
+
+.detail-btn {
+  color: #ff6a00;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.detail-btn:hover,
+.detail-btn:focus,
+.detail-btn:active {
+  color: #ff6a00;
+  outline: none;
+}
 
 .countdown {
   margin-left: 12px;

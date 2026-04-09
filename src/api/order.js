@@ -2,16 +2,16 @@
 import request from './request'
 
 /**
- * 查询订单列表（ES索引实现）
+ * 查询订单列表（ES索引实现 - 支持一键通搜）
  * @param {Object} params 查询参数
- * @param {number} [params.subOrderId] 子订单ID（可选）
- * @param {number} [params.status] 订单状态（可选）
- * @param {string} [params.spuName] 商品名称（可选）
+ * @param {string} [params.keyword] 搜索关键词（既能搜订单号，也能搜商品名）
+ * @param {number} [params.status] 订单状态筛选（可选）
  * @param {number} [params.pageNo] 页码，默认1
  * @param {number} [params.pageSize] 每页数量，默认12
  * @returns {Promise<{total: number, records: Array<SubOrderVO>}>} 返回分页结果
  *
  * SubOrderVO 数据结构：
+ * - parentOrderSn: 主订单编号
  * - subOrderId: 子订单ID
  * - subOrderSn: 子订单编号
  * - status: 状态（0-待付款, 1-待发货, 2-已发货, 3-已完成, 4-已关闭）
@@ -28,7 +28,7 @@ import request from './request'
  * - items: 商品明细列表
  *   - spuId: 商品SPU ID
  *   - skuId: 商品SKU ID
- *   - spuName: 商品名称
+ *   - spuName: 商品名称（可能包含搜索高亮标签）
  *   - skuName: 规格名称
  *   - picUrl: 商品图片
  *   - price: 下单单价
@@ -43,17 +43,17 @@ import request from './request'
  * - paymentTime: 支付时间
  * - paymentType: 支付方式
  * - paymentTypeDesc: 支付方式描述
+ * - payDeadline: 支付截止时间
  * - remark: 备注
  * - isDelete: 是否删除
  */
 export function getSubOrderList(params = {}) {
-    const { pageNo, pageSize, subOrderId, status, spuName } = params
+    const { keyword, status, pageNo, pageSize } = params
     const queryParams = {}
-    if (subOrderId !== undefined) queryParams.subOrderId = subOrderId
+    if (keyword !== undefined) queryParams.keyword = keyword
     if (status !== undefined) queryParams.status = status
-    if (spuName !== undefined) queryParams.spuName = spuName
     if (pageNo !== undefined) queryParams.pageNo = pageNo
-    if (pageSize !== undefined) queryParams.PageSize = pageSize // 后端参数名是 PageSize
+    if (pageSize !== undefined) queryParams.pageSize = pageSize
     return request.get('/order/list', { params: queryParams })
 }
 
