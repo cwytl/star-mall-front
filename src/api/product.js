@@ -31,21 +31,32 @@ export function getProductDetail(id) {
 }
 
 /**
- * 根据关键词、类目id搜索商品
- * @param {Object} keyword 关键词
- * @param {Object} categoryId 类目id
+ * 根据关键词、类目id、价格范围搜索商品
+ * @param {string} keyword 关键词
+ * @param {number} categoryId 类目id
+ * @param {number} minPrice 最低价格
+ * @param {number} maxPrice 最高价格
  * @param {number} pageNo 页码
- * @param {number} pageSize 每页数量id
+ * @param {number} pageSize 每页数量
  * @returns {Promise<any>} 接口返回的数据
  */
-export function searchProduct(keyword = '', categoryId = '',pageNo = 1,pageSize = 12) {
+export function searchProduct(keyword = '', categoryId = '', minPrice = null, maxPrice = null, pageNo = 1, pageSize = 12) {
   return request.get('/product/search',{
-    params: {keyword,categoryId,pageNo,pageSize  }
+    params: {keyword, categoryId, minPrice, maxPrice, pageNo, pageSize}
     })
+}
+
+/**
+ * 获取今日热门商品
+ * @returns {Promise<any>} 接口返回的数据
+ */
+export function getHotProductsToday() {
+  return request.get('/product/hotProductsToday')
 }
 
 export default {
   getProductList,
   getProductById,
-  searchProduct
+  searchProduct,
+  getHotProductsToday
 }

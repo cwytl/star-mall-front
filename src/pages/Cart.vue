@@ -6,6 +6,8 @@ import { ArrowDown, CircleCheckFilled } from '@element-plus/icons-vue'
 import { getCartList, deleteCart, updateCart } from '@/api/cart'
 import { getAvailableCoupons } from '@/api/coupon'
 import { checkout as checkoutApi } from '@/api/order'
+import { searchProduct } from '@/api/product'
+import ProductQuickView from '@/components/ProductQuickView.vue'
 
 const router = useRouter()
 
@@ -171,44 +173,70 @@ const fetchCartItems = async () => {
   }
 }
 
-const recommended = ref([
-  {
-    id: 'rec-1',
-    title: '云朵记忆棉枕 护颈助眠',
-    price: 129,
-    originPrice: 169,
-    tag: '凑单爆款',
-    cover:
-      'https://images.unsplash.com/photo-1582719478145-b04f0b95b553?auto=format&fit=crop&w=500&q=80'
-  },
-  {
-    id: 'rec-2',
-    title: '北欧风双面羊毛呢大衣',
-    price: 458,
-    originPrice: 699,
-    tag: '双12精选',
-    cover:
-      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=500&q=80'
-  },
-  {
-    id: 'rec-3',
-    title: '蓝牙降噪耳机 主动降噪 续航35h',
-    price: 299,
-    originPrice: 399,
-    tag: '人气爆款',
-    cover:
-      'https://images.unsplash.com/photo-1583394838336-acd977736f90?auto=format&fit=crop&w=500&q=80'
-  },
-  {
-    id: 'rec-4',
-    title: '高硼硅耐热玻璃水杯 700ml',
-    price: 39.9,
-    originPrice: 59,
-    tag: '热销',
-    cover:
-      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=500&q=80'
+// 凑单精选推荐商品
+const recommendedList = ref([])
+const currentIndex = ref(0)
+const recommendedLoading = ref(false)
+
+// 当前展示的4件商品
+const recommended = computed(() => {
+  if (recommendedList.value.length === 0) return []
+  return recommendedList.value.slice(currentIndex.value, currentIndex.value + 4)
+})
+
+// 标签列表，随机展示
+const tags = ['凑单爆款', '热销', '人气爆款', '限时特惠', '精选好物']
+
+// 获取推荐商品
+const fetchRecommended = async () => {
+  recommendedLoading.value = true
+  try {
+    const res = await searchProduct('', '', 0, 200, 1, 30)
+    const data = res?.data || res
+    const list = data?.records || data?.list || data?.items || []
+    recommendedList.value = list.map((item, idx) => ({
+      id: item.spuId ?? item.id ?? idx + 1,
+      spuId: item.spuId ?? item.id,
+      title: item.spuName || item.name || item.title || '精选好物',
+      price: item.price ?? item.salePrice ?? 0,
+      originPrice: (item.price ?? item.salePrice ?? 0) + Math.floor(Math.random() * 50 + 20),
+      tag: tags[Math.floor(Math.random() * tags.length)],
+      cover: item.mainImage || item.imageUrl || item.image || ''
+    }))
+    currentIndex.value = 0
+  } catch (err) {
+    console.error('获取推荐商品失败:', err)
+    recommendedList.value = []
+  } finally {
+    recommendedLoading.value = false
   }
-])
+}
+
+// 换一批
+const refreshRecommended = () => {
+  const total = recommendedList.value.length
+  if (total <= 4) {
+    currentIndex.value = 0
+    return
+  }
+  currentIndex.value += 4
+  if (currentIndex.value >= total) {
+    currentIndex.value = 0
+  }
+}
+
+// 商品快速预览弹窗
+const quickViewVisible = ref(false)
+const currentQuickViewSpuId = ref(null)
+
+const openQuickView = (item) => {
+  currentQuickViewSpuId.value = item.spuId || item.id
+  quickViewVisible.value = true
+}
+
+const onQuickViewAdded = () => {
+  fetchCartItems()
+}
 
 const allChecked = computed({
   get() {
@@ -342,10 +370,19 @@ const onQtyBlur = async (item) => {
 
 onMounted(() => {
   fetchCartItems()
+  fetchRecommended()
 })
 
 const goToProductDetail = (item) => {
   const url = router.resolve(`/product/${item.spuId}`).href
+  window.open(url, '_blank')
+}
+
+// 推荐商品点击跳转详情页
+const goToRecommendedDetail = (item) => {
+  const spuId = item.spuId || item.id
+  if (!spuId) return
+  const url = router.resolve(`/product/${spuId}`).href
   window.open(url, '_blank')
 }
 
@@ -561,28 +598,38 @@ const checkout = async () => {
           <p class="section-eyebrow">猜你喜欢</p>
           <h3 class="section-title">凑单精选</h3>
         </div>
-        <el-button text color="#ff6a00">换一批</el-button>
+        <el-button text color="#ff6a00" @click="refreshRecommended" :disabled="recommendedLoading">
+          {{ recommendedLoading ? '加载中...' : '换一批' }}
+        </el-button>
       </div>
-      <div class="rec-grid">
+      <div class="rec-grid" v-loading="recommendedLoading">
         <el-card
           v-for="item in recommended"
           :key="item.id"
           shadow="hover"
           class="rec-card"
+          @click="goToRecommendedDetail(item)"
         >
           <div class="rec-cover" :style="{ backgroundImage: `url(${item.cover})` }" />
           <div class="rec-info">
             <el-tag size="small" type="warning" effect="plain">{{ item.tag }}</el-tag>
             <p class="rec-title">{{ item.title }}</p>
             <div class="rec-price">
-              <span class="now">¥ {{ item.price.toFixed(2) }}</span>
-              <span class="origin">¥ {{ item.originPrice.toFixed(2) }}</span>
+              <span class="now">¥ {{ Number(item.price).toFixed(2) }}</span>
+              <span class="origin">¥ {{ Number(item.originPrice).toFixed(2) }}</span>
             </div>
-            <el-button size="small" color="#ff6a00" plain round>加入购物车</el-button>
+            <el-button size="small" color="#ff6a00" plain round @click.stop="openQuickView(item)">加入购物车</el-button>
           </div>
         </el-card>
       </div>
     </section>
+
+    <!-- 商品快速预览弹窗 -->
+    <ProductQuickView
+      v-model:visible="quickViewVisible"
+      :spuId="currentQuickViewSpuId"
+      @added="onQuickViewAdded"
+    />
   </div>
 
 </template>
@@ -1177,6 +1224,7 @@ const checkout = async () => {
 
 .rec-card {
   border: none;
+  cursor: pointer;
 }
 
 .rec-cover {

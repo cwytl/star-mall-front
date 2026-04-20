@@ -10,6 +10,8 @@ const router = useRouter()
 const keyword = ref((route.query.keyword || '').toString())
 const categoryId = ref((route.query.categoryId || '').toString())
 const categoryName = ref((route.query.categoryName || '').toString())
+const minPrice = ref(route.query.minPrice || null)
+const maxPrice = ref(route.query.maxPrice || null)
 const pageNo = ref(Number(route.query.pageNo) || 1)
 const pageSize = ref(12)
 
@@ -24,12 +26,14 @@ const normalizeProducts = (list = []) =>
   list.map((item, idx) => {
     const priceVal = item.price ?? item.salePrice ?? item.promotionPrice
     const rawTitle = item.spuName || item.name || item.title || `精选好物 ${idx + 1}`
+    const rawDesc = item.description || item.subtitle || '这个商品暂时没有描述'
     // 移除内联样式，只保留 em 标签，让 CSS 控制高亮颜色
     const cleanTitle = rawTitle.replace(/style\s*=\s*['"][^'"]*['"]/gi, '')
+    const cleanDesc = rawDesc.replace(/style\s*=\s*['"][^'"]*['"]/gi, '')
     return {
       id: item.spuId ?? item.id ?? item.productId ?? idx + 1,
       title: cleanTitle,
-      description: item.description || item.subtitle || '这个商品暂时没有描述',
+      description: cleanDesc,
       cover: item.mainImage || item.imageUrl || item.image || item.imgUrl || '',
       price: priceVal === undefined || priceVal === null ? '¥ --' : `¥ ${priceVal}`,
       sales: item.sales ? `销量 ${item.sales}` : '销量 --'
@@ -45,7 +49,7 @@ const fetchResults = async () => {
   loading.value = true
   error.value = ''
   try {
-    const res = await searchProduct(normalizedKeyword.value, categoryId.value, pageNo.value, pageSize.value)
+    const res = await searchProduct(normalizedKeyword.value, categoryId.value, minPrice.value, maxPrice.value, pageNo.value, pageSize.value)
     const data = res?.data || res
     const list = data?.records || data?.list || data?.items || []
     total.value = data?.total ?? (Array.isArray(list) ? list.length : 0)
@@ -69,6 +73,8 @@ const handleSearch = () => {
   if (normalizedKeyword.value) query.keyword = normalizedKeyword.value
   if (categoryId.value) query.categoryId = categoryId.value
   if (categoryName.value) query.categoryName = categoryName.value
+  if (minPrice.value) query.minPrice = minPrice.value
+  if (maxPrice.value) query.maxPrice = maxPrice.value
   router.push({ path: '/search', query })
 }
 
@@ -78,6 +84,8 @@ const handlePageChange = (page) => {
   if (normalizedKeyword.value) query.keyword = normalizedKeyword.value
   if (categoryId.value) query.categoryId = categoryId.value
   if (categoryName.value) query.categoryName = categoryName.value
+  if (minPrice.value) query.minPrice = minPrice.value
+  if (maxPrice.value) query.maxPrice = maxPrice.value
   router.push({ path: '/search', query })
 }
 
@@ -89,11 +97,13 @@ const goDetail = (id) => {
 }
 
 watch(
-  () => [route.query.keyword, route.query.categoryId, route.query.categoryName, route.query.pageNo],
-  ([nextKeyword, nextCategoryId, nextCategoryName, nextPage]) => {
+  () => [route.query.keyword, route.query.categoryId, route.query.categoryName, route.query.minPrice, route.query.maxPrice, route.query.pageNo],
+  ([nextKeyword, nextCategoryId, nextCategoryName, nextMinPrice, nextMaxPrice, nextPage]) => {
     keyword.value = (nextKeyword || '').toString()
     categoryId.value = (nextCategoryId || '').toString()
     categoryName.value = (nextCategoryName || '').toString()
+    minPrice.value = nextMinPrice || null
+    maxPrice.value = nextMaxPrice || null
     pageNo.value = Number(nextPage) || 1
     fetchResults()
   }
@@ -163,7 +173,7 @@ onMounted(fetchResults)
             <el-card shadow="hover" class="result-card" @click="goDetail(item.id)">
               <div class="card-cover" :style="{ backgroundImage: `url(${item.cover})` }" />
               <p class="card-title" v-html="item.title"></p>
-              <p class="card-desc">{{ item.description }}</p>
+              <p class="card-desc" v-html="item.description"></p>
               <div class="card-meta">
                 <span class="card-price">{{ item.price }}</span>
                 <span class="card-sales">{{ item.sales }}</span>
@@ -340,6 +350,13 @@ onMounted(fetchResults)
   line-height: 1.4;
   height: 34px;
   overflow: hidden;
+}
+
+.card-desc :deep(em) {
+  font-style: normal;
+  font-size: inherit;
+  font-weight: inherit;
+  color: #ff6a00;
 }
 
 .card-meta {

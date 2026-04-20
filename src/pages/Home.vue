@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Location } from '@element-plus/icons-vue'
@@ -17,6 +17,17 @@ const userInfo = ref(null)
 const userLoading = ref(false)
 const LOGOUT_MESSAGE_KEY = 'taomall_show_logout_msg'
 const keyword = ref('')
+
+// 无限滚动相关状态
+const pageNo = ref(1)
+const pageSize = 12
+const total = ref(0)
+const loadingMore = ref(false)
+const sentinelRef = ref(null)
+let observer = null
+let observerCreated = false
+
+const hasMore = computed(() => products.value.length < total.value)
 
 // 导航相关的数据和函数（用于 Home 页面的分类、轮播图等）
 const hotWords = ['爆款羽绒服', '无线耳机', '秋冬上新', '学生党必买', '百亿补贴']
@@ -49,7 +60,7 @@ const banners = [
 const promoCards = [
   {
     title: '热销榜单',
-    desc: '全站销量Top · 买手口碑推荐',
+    desc: '今日销量Top · 买手口碑推荐',
     tag: '热销',
     bg: 'linear-gradient(135deg, #fff1e6, #ffe6d5)'
   },
@@ -119,11 +130,16 @@ const fetchCategories = async () => {
   }
 }
 
-const fetchProducts = async () => {
-  isLoading.value = true
-  errorMessage.value = ''
+const fetchProducts = async (isLoadMore = false) => {
+  if (isLoadMore) {
+    loadingMore.value = true
+  } else {
+    isLoading.value = true
+    errorMessage.value = ''
+    pageNo.value = 1
+  }
   try {
-    const res = await getProductList({ pageNo: 1, pageSize: 12 })
+    const res = await getProductList({ pageNo: pageNo.value, pageSize: pageSize })
     const list =
       res?.data?.records ||
       res?.records ||
@@ -131,13 +147,59 @@ const fetchProducts = async () => {
       res?.list ||
       res
 
-    products.value = Array.isArray(list) ? normalizeProducts(list) : []
+    total.value = res?.data?.total ?? (Array.isArray(list) ? list.length : 0)
+
+    console.log('商品数据:', {
+      loaded: Array.isArray(list) ? list.length : 0,
+      total: total.value,
+      pageNo: pageNo.value,
+      hasMore: products.value.length < total.value
+    })
+
+    if (isLoadMore) {
+      products.value = [...products.value, ...normalizeProducts(Array.isArray(list) ? list : [])]
+    } else {
+      products.value = Array.isArray(list) ? normalizeProducts(list) : []
+      // 首次加载完成后创建 Observer（延迟确保 DOM 已渲染）
+      if (!observerCreated && products.value.length > 0) {
+        setTimeout(() => {
+          createObserver()
+        }, 100)
+      }
+    }
   } catch (error) {
-    errorMessage.value = error?.message || '商品推荐加载失败'
-    products.value = []
+    if (!isLoadMore) {
+      errorMessage.value = error?.message || '商品推荐加载失败'
+      products.value = []
+    }
   } finally {
     isLoading.value = false
+    loadingMore.value = false
   }
+}
+
+const loadMore = () => {
+  if (loadingMore.value || !hasMore.value) return
+  pageNo.value++
+  fetchProducts(true)
+}
+
+const createObserver = () => {
+  console.log('createObserver 调用, sentinelRef.value:', sentinelRef.value, 'observerCreated:', observerCreated)
+  if (!sentinelRef.value || observerCreated) return
+  observerCreated = true
+  observer = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0]
+      console.log('Observer 触发:', entry.isIntersecting, 'loadingMore:', loadingMore.value, 'hasMore:', hasMore.value)
+      if (entry.isIntersecting && !loadingMore.value && hasMore.value) {
+        loadMore()
+      }
+    },
+    { rootMargin: '100px' }
+  )
+  observer.observe(sentinelRef.value)
+  console.log('Observer 已创建并开始监听')
 }
 
 const fetchUserInfo = async () => {
@@ -163,6 +225,11 @@ const fetchUserInfo = async () => {
 }
 
 const handlePromoClick = (item) => {
+  if (item?.title === '热销榜单') {
+    const url = router.resolve('/hot-products').href
+    window.open(url, '_blank')
+    return
+  }
   if (item?.title === '秒杀会场' || item?.tag === '秒杀') {
     router.push('/coupon')
     return
@@ -227,6 +294,12 @@ onMounted(() => {
   if (localStorage.getItem(LOGOUT_MESSAGE_KEY)) {
     ElMessage.success('已退出')
     localStorage.removeItem(LOGOUT_MESSAGE_KEY)
+  }
+})
+
+onUnmounted(() => {
+  if (observer) {
+    observer.disconnect()
   }
 })
 </script>
@@ -359,26 +432,34 @@ onMounted(() => {
       <div v-else-if="isLoading" class="recommend-feedback loading">正在加载推荐商品...</div>
       <div v-else-if="products.length === 0" class="recommend-feedback">暂无推荐数据</div>
       <div v-else-if="detailError" class="recommend-feedback error">{{ detailError }}</div>
-      <el-row v-else :gutter="16">
-        <el-col
-          v-for="item in products"
-          :key="item.id"
-          :xs="12"
-          :sm="8"
-          :md="6"
-          :lg="6"
-          class="product-col"
-        >
-          <el-card shadow="hover" class="product-card" @click="goToDetail(item.id)">
-            <div class="product-thumb" :style="{ backgroundImage: `url(${item.cover})` }" />
-            <p class="product-title">{{ item.title }}</p>
-            <div class="product-meta">
-              <span class="product-price">{{ item.price }}</span>
-              <span class="product-sales">{{ item.sales }}</span>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <template v-else>
+        <el-row :gutter="16">
+          <el-col
+            v-for="item in products"
+            :key="item.id"
+            :xs="12"
+            :sm="8"
+            :md="6"
+            :lg="6"
+            class="product-col"
+          >
+            <el-card shadow="hover" class="product-card" @click="goToDetail(item.id)">
+              <div class="product-thumb" :style="{ backgroundImage: `url(${item.cover})` }" />
+              <p class="product-title">{{ item.title }}</p>
+              <div class="product-meta">
+                <span class="product-price">{{ item.price }}</span>
+                <span class="product-sales">{{ item.sales }}</span>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+        <!-- 无限滚动哨兵元素 -->
+        <div ref="sentinelRef" class="load-more-sentinel">
+          <span v-if="loadingMore" class="load-more-text">加载中...</span>
+          <!-- <span v-else-if="!hasMore" class="load-more-text">已加载全部商品 ({{ products.length }}/{{ total }})</span> -->
+          <span v-else-if="!hasMore" class="load-more-text">没有更多了...</span>
+        </div>
+      </template>
     </section>
 
     <footer class="site-footer">
@@ -836,7 +917,7 @@ onMounted(() => {
 }
 
 .recommend {
-  padding: 12px 32px 48px;
+  padding: 12px 32px 5px;
 }
 
 .section-header {
@@ -912,6 +993,17 @@ onMounted(() => {
   color: #475569;
   border: 1px dashed #e2e8f0;
   text-align: center;
+}
+
+.load-more-sentinel {
+  padding: 10px 16px;
+  text-align: center;
+  min-height: 60px;
+}
+
+.load-more-text {
+  color: #6b7280;
+  font-size: 14px;
 }
 
 .recommend-feedback.loading {

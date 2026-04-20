@@ -102,6 +102,11 @@ const routes = [
     name: 'Shop',
     component: () => import('@/pages/Shop.vue'),
     props: true
+  },
+  {
+    path: '/hot-products',
+    name: 'HotProducts',
+    component: () => import('@/pages/HotProducts.vue')
   }
 ]
 
