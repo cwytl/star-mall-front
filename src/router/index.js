@@ -107,6 +107,48 @@ const routes = [
     path: '/hot-products',
     name: 'HotProducts',
     component: () => import('@/pages/HotProducts.vue')
+  },
+  // ===== 商家端路由 =====
+  {
+    path: '/seller',
+    component: () => import('@/pages/seller/Layout.vue'),
+    meta: { isSellerRoute: true },
+    children: [
+      {
+        path: '',
+        redirect: '/seller/dashboard'
+      },
+      {
+        path: 'login',
+        name: 'SellerLogin',
+        component: () => import('@/pages/seller/Login.vue'),
+        meta: { isSellerRoute: true, requiresSellerAuth: false }
+      },
+      {
+        path: 'dashboard',
+        name: 'SellerDashboard',
+        component: () => import('@/pages/seller/Dashboard.vue'),
+        meta: { requiresSellerAuth: true }
+      },
+      {
+        path: 'products',
+        name: 'SellerProducts',
+        component: () => import('@/pages/seller/Products.vue'),
+        meta: { requiresSellerAuth: true }
+      },
+      {
+        path: 'orders',
+        name: 'SellerOrders',
+        component: () => import('@/pages/seller/Orders.vue'),
+        meta: { requiresSellerAuth: true }
+      },
+      {
+        path: 'shop',
+        name: 'SellerShop',
+        component: () => import('@/pages/seller/Shop.vue'),
+        meta: { requiresSellerAuth: true }
+      }
+    ]
   }
 ]
 
@@ -119,6 +161,17 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  // 商家端路由守卫
+  if (to.meta.requiresSellerAuth) {
+    const sellerToken = localStorage.getItem('seller_token')
+    if (!sellerToken) {
+      ElMessage.warning('请先登录商家后台')
+      next({ path: '/seller/login' })
+      return
+    }
+  }
+
+  // 用户端路由守卫
   if (to.meta.requiresAuth) {
     const token = localStorage.getItem('token')
     if (!token) {

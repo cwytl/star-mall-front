@@ -99,7 +99,9 @@ const normalizeCartItems = (list = []) =>
     checked: item.checked === 1 || item.checked === true,
     shopId: item.shopId,
     shopName: item.shopName,
-    createTime: item.createTime
+    createTime: item.createTime,
+    spuStatusDesc: item.spuStatusDesc,
+    skuStockDesc: item.skuStockDesc
   }))
 
 const groupedCartItems = computed(() => {
@@ -138,13 +140,16 @@ const groupedCartItems = computed(() => {
 const isShopAllChecked = (shopId) => {
   const group = groupedCartItems.value.find(g => g.shopId === shopId)
   if (!group || group.items.length === 0) return false
-  return group.items.every(item => item.checked)
+  const selectableItems = group.items.filter(isItemSelectable)
+  if (selectableItems.length === 0) return false
+  return selectableItems.every(item => item.checked)
 }
 
 const toggleShopCheck = async (shopId, checked) => {
   const group = groupedCartItems.value.find(g => g.shopId === shopId)
   if (!group) return
   for (const item of group.items) {
+    if (!isItemSelectable(item)) continue
     item.checked = checked
     try {
       await updateCart({
@@ -238,13 +243,23 @@ const onQuickViewAdded = () => {
   fetchCartItems()
 }
 
+// 商品是否可勾选（下架或已售空不可勾选）
+const isItemSelectable = (item) =>
+  item.spuStatusDesc !== '下架' && item.skuStockDesc !== '已售空'
+
+// 商品是否需要灰显（下架或已售空）
+const isItemDisabled = (item) =>
+  item.spuStatusDesc === '下架' || item.skuStockDesc === '已售空'
+
 const allChecked = computed({
   get() {
-    if (!cartItems.value.length) return false
-    return cartItems.value.every((item) => item.checked)
+    const selectableItems = cartItems.value.filter(isItemSelectable)
+    if (!selectableItems.length) return false
+    return selectableItems.every((item) => item.checked)
   },
   async set(val) {
     for (const item of cartItems.value) {
+      if (!isItemSelectable(item)) continue
       item.checked = val
       try {
         await updateCart({
@@ -477,15 +492,30 @@ const checkout = async () => {
                 </div>
                 <div class="col-product shop-name">{{ group.shopName }}</div>
               </div>
-              <div v-for="item in group.items" :key="item.id" class="cart-item">
+              <div v-for="item in group.items" :key="item.id" class="cart-item" :class="{ disabled: isItemDisabled(item) }">
                 <div class="col-check">
-                  <el-checkbox v-model="item.checked" size="large" @change="onCheckboxChange(item)" />
+                  <el-checkbox
+                    v-model="item.checked"
+                    size="large"
+                    :disabled="!isItemSelectable(item)"
+                    @change="onCheckboxChange(item)"
+                  />
                 </div>
                 <div class="col-product product-clickable" @click="goToProductDetail(item)">
-                  <div class="product-thumb" :style="{ backgroundImage: `url(${item.image})` }" />
+                  <div class="product-thumb" :style="{ backgroundImage: `url(${item.image})` }">
+                    <div v-if="item.spuStatusDesc === '下架'" class="thumb-mask">
+                      <span class="mask-text">商品已下架</span>
+                    </div>
+                    <div v-else-if="item.skuStockDesc === '已售空'" class="thumb-mask">
+                      <span class="mask-text">已售空</span>
+                    </div>
+                  </div>
                   <div class="product-info">
                     <p class="product-title">{{ item.description }}</p>
                     <p class="product-spec">{{ item.spec || '无可选规格' }}</p>
+                    <div class="product-tags">
+                      <el-tag v-if="item.spuStatusDesc === '在售' && item.skuStockDesc === '库存不足'" type="warning" size="small" effect="plain">库存不足</el-tag>
+                    </div>
                   </div>
                 </div>
                 <div class="col-price">
@@ -853,6 +883,27 @@ const checkout = async () => {
   background-size: cover;
   background-position: center;
   box-shadow: inset 0 0 0 1px #f3f4f6;
+  position: relative;
+}
+
+/* 图片遮罩层（下架/已售空） */
+.thumb-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mask-text {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
 }
 
 .product-info {
@@ -875,6 +926,21 @@ const checkout = async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* 商品禁用状态（下架/已售空） */
+.cart-item.disabled {
+  opacity: 0.6;
+}
+
+.cart-item.disabled .product-title,
+.cart-item.disabled .product-spec {
+  color: #9ca3af;
+}
+
+.cart-item.disabled .price-now,
+.cart-item.disabled .subtotal {
+  color: #9ca3af;
 }
 
 .col-price,

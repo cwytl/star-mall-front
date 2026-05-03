@@ -6,7 +6,8 @@ import SiteHeader from '@/components/SiteHeader.vue'
 const route = useRoute()
 
 const hideHeaderRoutes = ['/login', '/register']
-const showHeader = computed(() => !hideHeaderRoutes.includes(route.path))
+const isSellerRoute = computed(() => route.path.startsWith('/seller'))
+const showHeader = computed(() => !hideHeaderRoutes.includes(route.path) && !isSellerRoute.value)
 </script>
 
 <template>
